@@ -1,4 +1,6 @@
 import os
+import sys
+
 import pygame
 import argparse
 import numpy as np
@@ -9,12 +11,16 @@ from random import randint
 import random
 import statistics
 import torch.optim as optim
-import torch 
+import torch
 from GPyOpt.methods import BayesianOptimization
 from bayesOpt import *
 import datetime
 import distutils.util
-DEVICE = 'cpu' # 'cuda' if torch.cuda.is_available() else 'cpu'
+
+if torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
 
 #################################
 #   Define parameters manually  #
@@ -27,21 +33,25 @@ def define_parameters():
     params['first_layer_size'] = 200    # neurons in the first layer
     params['second_layer_size'] = 20   # neurons in the second layer
     params['third_layer_size'] = 50    # neurons in the third layer
-    params['episodes'] = 250          
+    params['episodes'] = 250
     params['memory_size'] = 2500
     params['batch_size'] = 1000
+    # Visualization
+    params['display'] = True
+    params['speed'] = 50
     # Settings
     params['weights_path'] = 'weights/weights.h5'
-    params['train'] = False
-    params["test"] = True
+    params['train'] = True
+    params["test"] = False
     params['plot_score'] = True
     params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) +'.txt'
+    params['parser_active'] = False
     return params
 
 
 class Game:
     """ Initialize PyGAME """
-    
+
     def __init__(self, game_width, game_height):
         pygame.display.set_caption('SnakeGen')
         self.game_width = game_width
@@ -72,7 +82,10 @@ class Player(object):
         if self.position[-1][0] != x or self.position[-1][1] != y:
             if self.food > 1:
                 for i in range(0, self.food - 1):
+                    # this makes the snake longer for each food eaten
+                    # longer snake -> more positions ocupied
                     self.position[i][0], self.position[i][1] = self.position[i + 1]
+            # new position is the one passed, assigned to the head, I suppose
             self.position[-1][0] = x
             self.position[-1][1] = y
 
@@ -194,7 +207,7 @@ def plot_seaborn(array_counter, array_score, train):
     sns.set(color_codes=True, font_scale=1.5)
     sns.set_style("white")
     plt.figure(figsize=(13,8))
-    fit_reg = False if train== False else True        
+    fit_reg = False if train== False else True
     ax = sns.regplot(
         np.array([array_counter])[0],
         np.array([array_score])[0],
@@ -214,20 +227,20 @@ def plot_seaborn(array_counter, array_score, train):
 
 
 def get_mean_stdev(array):
-    return statistics.mean(array), statistics.stdev(array)    
+    return statistics.mean(array), statistics.stdev(array)
 
 
 def test(params):
     params['load_weights'] = True
     params['train'] = False
-    params["test"] = False 
+    params["test"] = False
     score, mean, stdev = run(params)
     return score, mean, stdev
 
 
 def run(params):
     """
-    Run the DQN algorithm, based on the parameters previously set.   
+    Run the DQN algorithm, based on the parameters previously set.
     """
     pygame.init()
     agent = DQNAgent(params)
@@ -242,7 +255,7 @@ def run(params):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                quit()
+                sys.exit()
         # Initialize classes
         game = Game(440, 440)
         player1 = game.player
@@ -252,8 +265,9 @@ def run(params):
         initialize_game(player1, game, food1, agent, params['batch_size'])
         if params['display']:
             display(player1, food1, game, record)
-        
+
         steps = 0       # steps since the last positive reward
+        # if 100 steps are gone without eating, the current game is over.
         while (not game.crash) and (steps < 100):
             if not params['train']:
                 agent.epsilon = 0.01
@@ -269,7 +283,7 @@ def run(params):
                 final_move = np.eye(3)[randint(0,2)]
             else:
                 # predict action based on the old state
-                with torch.no_grad():
+                with torch.no_grad():  # avoids storing the gradients of the following tensors, saving computation.
                     state_old_tensor = torch.tensor(state_old.reshape((1, 11)), dtype=torch.float32).to(DEVICE)
                     prediction = agent(state_old_tensor)
                     final_move = np.eye(3)[np.argmax(prediction.detach().cpu().numpy()[0])]
@@ -280,11 +294,11 @@ def run(params):
 
             # set reward for the new state
             reward = agent.set_reward(player1, game.crash)
-            
+
             # if food is eaten, steps is set to 0
             if reward > 0:
                 steps = 0
-                
+
             if params['train']:
                 # train short memory base on the new action and state
                 agent.train_short_memory(state_old, final_move, reward, state_new, game.crash)
@@ -314,22 +328,25 @@ def run(params):
 if __name__ == '__main__':
     # Set options to activate or deactivate the game view, and its speed
     pygame.font.init()
-    parser = argparse.ArgumentParser()
     params = define_parameters()
-    parser.add_argument("--display", nargs='?', type=distutils.util.strtobool, default=True)
-    parser.add_argument("--speed", nargs='?', type=int, default=50)
-    parser.add_argument("--bayesianopt", nargs='?', type=distutils.util.strtobool, default=False)
-    args = parser.parse_args()
-    print("Args", args)
-    params['display'] = args.display
-    params['speed'] = args.speed
-    if args.bayesianopt:
-        bayesOpt = BayesianOptimizer(params)
-        bayesOpt.optimize_RL()
+    if params['parser_active']:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--display", nargs='?', type=distutils.util.strtobool, default=True)
+        parser.add_argument("--speed", nargs='?', type=int, default=50)
+        parser.add_argument("--bayesianopt", nargs='?', type=distutils.util.strtobool, default=False)
+        args = parser.parse_args()
+        print("Args", args)
+        params['display'] = args.display
+        params['speed'] = args.speed
+        if args.bayesianopt:
+            bayesOpt = BayesianOptimizer(params)
+            bayesOpt.optimize_RL()
+
     if params['train']:
         print("Training...")
         params['load_weights'] = False   # when training, the network is not pre-trained
         run(params)
+
     if params['test']:
         print("Testing...")
         params['train'] = False

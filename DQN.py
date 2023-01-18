@@ -8,7 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import copy
-DEVICE = 'cpu' # 'cuda' if torch.cuda.is_available() else 'cpu'
+
+if torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
 
 class DQNAgent(torch.nn.Module):
     def __init__(self, params):
@@ -19,7 +23,7 @@ class DQNAgent(torch.nn.Module):
         self.short_memory = np.array([])
         self.agent_target = 1
         self.agent_predict = 0
-        self.learning_rate = params['learning_rate']        
+        self.learning_rate = params['learning_rate']
         self.epsilon = 1
         self.actual = []
         self.first_layer = params['first_layer_size']
@@ -30,7 +34,7 @@ class DQNAgent(torch.nn.Module):
         self.load_weights = params['load_weights']
         self.optimizer = None
         self.network()
-          
+
     def network(self):
         # Layers
         self.f1 = nn.Linear(11, self.first_layer)
@@ -48,7 +52,7 @@ class DQNAgent(torch.nn.Module):
         x = F.relu(self.f3(x))
         x = F.softmax(self.f4(x), dim=-1)
         return x
-    
+
     def get_state(self, game, player, food):
         """
         Return the state.
@@ -63,7 +67,7 @@ class DQNAgent(torch.nn.Module):
             - The food is on the left
             - The food is on the right
             - The food is on the upper side
-            - The food is on the lower side      
+            - The food is on the lower side
         """
         state = [
             (player.x_change == 20 and player.y_change == 0 and ((list(map(add, player.position[-1], [20, 0])) in player.position) or
@@ -109,7 +113,7 @@ class DQNAgent(torch.nn.Module):
         """
         Return the reward.
         The reward is:
-            -10 when Snake crashes. 
+            -10 when Snake crashes.
             +10 when Snake eats food
             0 otherwise
         """
@@ -123,7 +127,7 @@ class DQNAgent(torch.nn.Module):
 
     def remember(self, state, action, reward, next_state, done):
         """
-        Store the <state, action, reward, next_state, is_done> tuple in a 
+        Store the <state, action, reward, next_state, is_done> tuple in a
         memory buffer for replay memory.
         """
         self.memory.append((state, action, reward, next_state, done))
@@ -151,7 +155,7 @@ class DQNAgent(torch.nn.Module):
             self.optimizer.zero_grad()
             loss = F.mse_loss(output, target_f)
             loss.backward()
-            self.optimizer.step()            
+            self.optimizer.step()
 
     def train_short_memory(self, state, action, reward, next_state, done):
         """
