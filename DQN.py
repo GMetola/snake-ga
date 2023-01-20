@@ -33,6 +33,7 @@ class DQNAgent(torch.nn.Module):
         self.weights = params['weights_path']
         self.load_weights = params['load_weights']
         self.optimizer = None
+        self.batch_size = params['batch_size']
         self.network()
 
     def network(self):
@@ -132,22 +133,23 @@ class DQNAgent(torch.nn.Module):
         """
         self.memory.append((state, action, reward, next_state, done))
 
-    def replay_new(self, memory, batch_size):
+    def replay_new(self, memory):
         """
         Replay memory.
         """
-        if len(memory) > batch_size:
-            minibatch = random.sample(memory, batch_size)
+        if len(memory) > self.batch_size:
+            minibatch = random.sample(memory, self.batch_size)
         else:
             minibatch = memory
         for state, action, reward, next_state, done in minibatch:
             self.train()
             torch.set_grad_enabled(True)
-            target = reward
             next_state_tensor = torch.tensor(np.expand_dims(next_state, 0), dtype=torch.float32).to(DEVICE)
             state_tensor = torch.tensor(np.expand_dims(state, 0), dtype=torch.float32, requires_grad=True).to(DEVICE)
             if not done:
                 target = reward + self.gamma * torch.max(self.forward(next_state_tensor)[0])
+            else:
+                target = reward
             output = self.forward(state_tensor)
             target_f = output.clone()
             target_f[0][np.argmax(action)] = target
@@ -164,15 +166,18 @@ class DQNAgent(torch.nn.Module):
         """
         self.train()
         torch.set_grad_enabled(True)
-        target = reward
         next_state_tensor = torch.tensor(next_state.reshape((1, 11)), dtype=torch.float32).to(DEVICE)
         state_tensor = torch.tensor(state.reshape((1, 11)), dtype=torch.float32, requires_grad=True).to(DEVICE)
         if not done:
-            target = reward + self.gamma * torch.max(self.forward(next_state_tensor[0]))
+            target = reward + self.gamma * torch.max(self.forward(next_state_tensor[0]))  # That [0] index is just to reduce one dimension
+        else:
+            target = reward
         output = self.forward(state_tensor)
         target_f = output.clone()
         target_f[0][np.argmax(action)] = target
+        # detach removes it from the gradient steps because target_f is not a step of the NN. We also save some memory doing so
         target_f.detach()
+        # zero_grad() sets all gradients to zero to avoid backpropagating accumulated gradients of previous phases
         self.optimizer.zero_grad()
         loss = F.mse_loss(output, target_f)
         loss.backward()

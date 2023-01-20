@@ -27,6 +27,8 @@ else:
 #################################
 def define_parameters():
     params = dict()
+    # Game
+    params['game_size'] = 440
     # Neural Network
     params['epsilon_decay_linear'] = 1/100
     params['learning_rate'] = 0.00013629
@@ -41,8 +43,8 @@ def define_parameters():
     params['speed'] = 50
     # Settings
     params['weights_path'] = 'weights/weights.h5'
-    params['train'] = True
-    params["test"] = False
+    params['train'] = False
+    params["test"] = not params['train']
     params['plot_score'] = True
     params['log_path'] = 'logs/scores_' + str(datetime.datetime.now().strftime("%Y%m%d%H%M%S")) +'.txt'
     params['parser_active'] = False
@@ -193,14 +195,14 @@ def update_screen():
     pygame.display.update()
 
 
-def initialize_game(player, game, food, agent, batch_size):
+def initialize_game(player, game, food, agent):
     state_init1 = agent.get_state(game, player, food)  # [0 0 0 0 0 0 0 0 0 1 0 0 0 1 0 0]
     action = [1, 0, 0]
     player.do_move(action, player.x, player.y, game, food, agent)
     state_init2 = agent.get_state(game, player, food)
     reward1 = agent.set_reward(player, game.crash)
     agent.remember(state_init1, action, reward1, state_init2, game.crash)
-    agent.replay_new(agent.memory, batch_size)
+    agent.replay_new(agent.memory)
 
 
 def plot_seaborn(array_counter, array_score, train):
@@ -257,12 +259,12 @@ def run(params):
                 pygame.quit()
                 sys.exit()
         # Initialize classes
-        game = Game(440, 440)
+        game = Game(params['game_size'], params['game_size'])
         player1 = game.player
         food1 = game.food
 
         # Perform first move
-        initialize_game(player1, game, food1, agent, params['batch_size'])
+        initialize_game(player1, game, food1, agent)
         if params['display']:
             display(player1, food1, game, record)
 
@@ -311,7 +313,8 @@ def run(params):
                 pygame.time.wait(params['speed'])
             steps+=1
         if params['train']:
-            agent.replay_new(agent.memory, params['batch_size'])
+            # at the end of each life, it trains
+            agent.replay_new(agent.memory)
         counter_games += 1
         total_score += game.score
         print(f'Game {counter_games}      Score: {game.score}')
@@ -327,6 +330,7 @@ def run(params):
 
 if __name__ == '__main__':
     # Set options to activate or deactivate the game view, and its speed
+    os.chdir(r'C:\git\learning_AI_games\snake-ga')
     pygame.font.init()
     params = define_parameters()
     if params['parser_active']:
